@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SolarRide Dashboard – GEC Hassan</title>
+
+  <!-- Leaflet CSS -->
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css"
+  />
+  <!-- Font Awesome -->
+  <script
+    src="https://kit.fontawesome.com/a076d05399.js"
+    crossorigin="anonymous"
+  ></script>
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    :root {
+      --bg: #121212;
+      --card: #1f1f1f;
+      --text: #e0e0e0;
+      --accent: #28a745;
+      --shadow: rgba(0, 0, 0, 0.5);
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+    header {
+      background: var(--card);
+      padding: 1rem 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 2px 6px var(--shadow);
+    }
+    header h1 {
+      font-size: 1.5rem;
+    }
+    main {
+      flex: 1;
+      padding: 2rem;
+      display: grid;
+      gap: 2rem;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    }
+    .card {
+      background: var(--card);
+      padding: 1.5rem;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px var(--shadow);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+    }
+    .card img,
+    .card i {
+      font-size: 2.5rem;
+      margin-bottom: 1rem;
+      color: var(--accent);
+    }
+    .controls {
+      grid-column: 1 / -1;
+      display: flex;
+      gap: 1rem;
+      justify-content: center;
+      align-items: center;
+    }
+    .controls button {
+      background: var(--accent);
+      border: none;
+      padding: 0.75rem 1.5rem;
+      border-radius: 8px;
+      color: #fff;
+      font-weight: bold;
+      cursor: pointer;
+      box-shadow: 0 2px 6px var(--shadow);
+      transition: background 0.3s;
+    }
+    .controls button:hover {
+      background: #1e7e34;
+    }
+    #status {
+      color: var(--text);
+      margin-left: 1rem;
+      font-size: 0.9rem;
+      flex-shrink: 0;
+    }
+    .chart-map-container {
+      grid-column: 1 / -1;
+      display: grid;
+      gap: 2rem;
+      grid-template-columns: 1fr 1fr;
+    }
+    .chart-container,
+    #map {
+      background: var(--card);
+      border-radius: 12px;
+      box-shadow: 0 4px 12px var(--shadow);
+      padding: 1rem;
+      height: 350px;
+    }
+    @media (max-width: 768px) {
+      .chart-map-container {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>SolarRide Dashboard</h1>
+    <h3>GEC Hassan</h3>
+  </header>
+
+  <main>
+    <div class="card">
+      <img src="https://cdn-icons-png.flaticon.com/512/414/414825.png" alt="Cloudy" />
+      <h2>Weather</h2>
+      <p>Cloudy, 20°C</p>
+    </div>
+
+    <div class="card">
+      <i class="fas fa-battery-half"></i>
+      <h2>Battery</h2>
+      <p id="batteryValue">--%</p>
+      <progress id="batteryBar" value="0" max="100" style="width:100%; margin-top:0.5rem;"></progress>
+    </div>
+
+    <div class="card">
+      <i class="fas fa-solar-panel"></i>
+      <h2>Solar Power</h2>
+      <p id="solarValue">-- W</p>
+    </div>
+
+    <div class="card">
+      <i class="fas fa-tachometer-alt"></i>
+      <h2>Speed</h2>
+      <p id="speedValue">-- km/h</p>
+    </div>
+
+    <div class="controls">
+      <button id="cameraBtn">Enable Camera</button>
+      <button id="downloadBtn" style="display:none;">Download</button>
+      <span id="status">Camera not enabled</span>
+    </div>
+
+    <div class="chart-map-container">
+      <div class="chart-container">
+        <canvas id="lineChart"></canvas>
+      </div>
+      <div id="map"></div>
+    </div>
+  </main>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+  <script>
+    // Chart.js Setup
+    const ctx = document.getElementById('lineChart').getContext('2d');
+    const lineChart = new Chart(ctx, {
+      type: 'line',
+      data: { labels: [], datasets: [
+        { label: 'Battery (%)', data: [], borderColor: '#ff4d4d', fill: false },
+        { label: 'Solar Power (W)', data: [], borderColor: '#4dabf7', fill: false },
+        { label: 'Speed (km/h)', data: [], borderColor: '#51cf66', fill: false }
+      ]},
+      options: { responsive: true, maintainAspectRatio: false,
+        scales: { x: { title: { display: true, text: 'Time' } }, y: { beginAtZero: true } }
+      }
+    });
+
+    function updateDashboard(batt, solar, spd) {
+      document.getElementById('batteryValue').innerText = batt + '%';
+      document.getElementById('batteryBar').value = batt;
+      document.getElementById('solarValue').innerText = solar + ' W';
+      document.getElementById('speedValue').innerText = spd + ' km/h';
+
+      const t = new Date().toLocaleTimeString();
+      lineChart.data.labels.push(t);
+      lineChart.data.datasets[0].data.push(batt);
+      lineChart.data.datasets[1].data.push(solar);
+      lineChart.data.datasets[2].data.push(spd);
+      if (lineChart.data.labels.length > 20) {
+        lineChart.data.labels.shift();
+        lineChart.data.datasets.forEach(ds => ds.data.shift());
+      }
+      lineChart.update();
+    }
+
+    // Leaflet Map Init
+    function initMap() {
+      const map = L.map('map').setView([13.0033, 76.1026], 15);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors'
+      }).addTo(map);
+      L.marker([13.0033, 76.1026]).addTo(map).bindPopup('GEC Hassan').openPopup();
+    }
+
+    // Camera Recording
+    const cameraBtn = document.getElementById('cameraBtn');
+    const downloadBtn = document.getElementById('downloadBtn');
+    const statusEl = document.getElementById('status');
+    const videoHolder = document.createElement('video');
+    videoHolder.id = 'cameraVideo';
+    videoHolder.autoplay = true;
+    videoHolder.muted = true;
+    videoHolder.style.position = 'fixed';
+    videoHolder.style.bottom = '1rem';
+    videoHolder.style.right = '1rem';
+    videoHolder.style.width = '200px';
+    videoHolder.style.borderRadius = '8px';
+    videoHolder.style.boxShadow = '0 4px 12px var(--shadow)';
+    document.body.appendChild(videoHolder);
+
+    let cameraStream = null;
+    let mediaRecorder = null;
+    let recordedChunks = [];
+
+    cameraBtn.addEventListener('click', async () => {
+      if (!cameraStream) {
+        try {
+          cameraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+          videoHolder.srcObject = cameraStream;
+          statusEl.innerText = 'Recording...';
+          cameraBtn.innerText = 'Stop & Preview';
+
+          recordedChunks = [];
+          mediaRecorder = new MediaRecorder(cameraStream, { mimeType: 'video/webm' });
+          mediaRecorder.ondataavailable = e => { if (e.data.size) recordedChunks.push(e.data); };
+          mediaRecorder.start();
+        } catch (e) {
+          statusEl.innerText = 'Camera access denied';
+        }
+      } else {
+        mediaRecorder.stop();
+        cameraStream.getTracks().forEach(t => t.stop());
+        cameraStream = null;
+        statusEl.innerText = 'Preview ready';
+        cameraBtn.style.display = 'none';
+        downloadBtn.style.display = 'inline-block';
+      }
+    });
+
+    downloadBtn.addEventListener('click', () => {
+      const blob = new Blob(recordedChunks, { type: 'video/webm' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `recording_${Date.now()}.webm`;
+      document.body.appendChild(a);
+      a.click();
+      URL.revokeObjectURL(url);
+
+      downloadBtn.style.display = 'none';
+      cameraBtn.style.display = 'inline-block';
+      cameraBtn.innerText = 'Enable Camera';
+      statusEl.innerText = 'Camera not enabled';
+      videoHolder.srcObject = null;
+    });
+
+    // Initialize
+    window.onload = () => {
+      initMap();
+      updateDashboard(78, 135, 12.5);
+    };
+  </script>
+</body>
+</html>
